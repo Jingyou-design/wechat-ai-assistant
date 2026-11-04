@@ -166,6 +166,11 @@ class ServiceTests(unittest.TestCase):
 
 
 class TunnelTests(unittest.TestCase):
+    def setUp(self):
+        patch.object(start_all, "load_runtime_key", return_value="").start()
+        patch.object(start_all, "save_runtime_key").start()
+        self.addCleanup(patch.stopall)
+
     def status(self, ready):
         return {
             "tunnel_id": "tunnel_" + "a" * 32,
@@ -234,6 +239,39 @@ class TunnelTests(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "重连失败"),
         ):
             start_all.start_tunnel()
+
+    def test_env_file_is_used_without_prompt_and_overrides_old_environment(self):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(
+                start_all,
+                "tunnel_status",
+                side_effect=[self.status(False), self.status(True)],
+            ),
+            patch.object(start_all, "load_runtime_key", return_value="saved-key"),
+            patch.dict(start_all.os.environ, {"CONTROL_PLANE_API_KEY": "old-key"}),
+            patch.object(start_all.getpass, "getpass") as password,
+            patch.object(
+                start_all.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+            ) as run,
+        ):
+            start_all.start_tunnel()
+        self.assertEqual(
+            run.call_args.kwargs["env"]["CONTROL_PLANE_API_KEY"], "saved-key"
+        )
+        password.assert_not_called()
+
+    def test_tunnel_waits_for_readiness_instead_of_failing_immediately(self):
+        with (
+            patch.object(
+                start_all,
+                "tunnel_status",
+                side_effect=[self.status(False), self.status(True)],
+            ),
+            patch.object(start_all.time, "sleep") as sleep,
+        ):
+            start_all.wait_tunnel()
+        sleep.assert_called_once_with(2)
 
 
 if __name__ == "__main__":

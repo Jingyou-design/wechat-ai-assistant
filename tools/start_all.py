@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.request import getproxies
 
 from app.config.bridge import prepare_token
+from app.config.runtime import load_runtime_key, save_runtime_key
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
@@ -212,6 +213,29 @@ def tunnel_status() -> dict:
         ) from None
 
 
+def tunnel_environment(key: str) -> dict[str, str]:
+    env = {**os.environ, "CONTROL_PLANE_API_KEY": key}
+    for scheme, proxy in getproxies().items():
+        if scheme in {"http", "https"}:
+            env.setdefault(f"{scheme.upper()}_PROXY", proxy)
+    env["NO_PROXY"] = ",".join(
+        filter(None, [env.get("NO_PROXY"), "127.0.0.1", "localhost"])
+    )
+    return env
+
+
+def wait_tunnel():
+    for attempt in range(15):
+        status = tunnel_status()
+        if all(status.get(name) for name in ("process_running", "healthy", "ready")):
+            return
+        if attempt < 14:
+            time.sleep(2)
+    raise RuntimeError(
+        "隧道尚未就绪，请检查运行密钥权限和官方客户端诊断，不能视为ChatGPT已连接。"
+    )
+
+
 def start_tunnel():
     print("[5/5] 检查官方隧道…", flush=True)
     if not TUNNEL.exists():
@@ -228,22 +252,20 @@ def start_tunnel():
     if all(status.get(key) for key in ("process_running", "healthy", "ready")):
         print("官方隧道已就绪，复用现有后台连接。", flush=True)
         return
-    key = os.environ.get("CONTROL_PLANE_API_KEY")
+    saved_key = load_runtime_key(ROOT / ".env")
+    key = saved_key or os.environ.get("CONTROL_PLANE_API_KEY")
     if not key:
         if not sys.stdin.isatty():
             raise RuntimeError(
-                "本机服务已启动，但隧道已停止且缺少运行密钥。请双击start_all.cmd，在窗口中隐藏输入隧道运行密钥；不要把密钥发到聊天。"
+                "本机服务已启动，但隧道已停止且.env未填写运行密钥。请双击start_all.cmd，隐藏输入后保存到本机.env；不要把密钥发到聊天。"
             )
-        key = getpass.getpass("Tunnel runtime key (hidden, not saved): ").strip()
+        key = getpass.getpass(
+            "Tunnel runtime key (hidden, saved to local .env): "
+        ).strip()
     if not key:
         raise RuntimeError("未提供运行密钥，隧道未连接。本机读取器和Docker保持运行。")
-    env = {**os.environ, "CONTROL_PLANE_API_KEY": key}
-    for scheme, proxy in getproxies().items():
-        if scheme in {"http", "https"}:
-            env.setdefault(f"{scheme.upper()}_PROXY", proxy)
-    env["NO_PROXY"] = ",".join(
-        filter(None, [env.get("NO_PROXY"), "127.0.0.1", "localhost"])
-    )
+    if not saved_key:
+        save_runtime_key(ROOT / ".env", key)
     result = subprocess.run(
         [
             str(TUNNEL),
@@ -263,7 +285,7 @@ def start_tunnel():
             "http://127.0.0.1:18767/mcp",
             "--json",
         ],
-        env=env,
+        env=tunnel_environment(key),
         capture_output=True,
         check=False,
         timeout=90,
@@ -273,11 +295,7 @@ def start_tunnel():
         raise RuntimeError(
             "本机服务已启动，但隧道重连失败。请检查运行密钥权限和网络代理；不输出可能含敏感信息的完整客户端响应。"
         )
-    status = tunnel_status()
-    if not all(status.get(key) for key in ("process_running", "healthy", "ready")):
-        raise RuntimeError(
-            "隧道尚未就绪，请检查官方客户端诊断，不能视为ChatGPT已连接。"
-        )
+    wait_tunnel()
     print("官方隧道已在后台连接并通过就绪检查。", flush=True)
 
 
