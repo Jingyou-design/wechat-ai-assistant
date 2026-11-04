@@ -244,7 +244,7 @@ class ContextStore:
 
     def voice(self, request: DetailRequest) -> VoiceResult:
         with self.lock:
-            task = self._task(request.task_id, text=True)
+            task = self._task(request.task_id)
             reference = task.references.get(request.message_id)
             if reference is None:
                 raise ValueError("只能转写本任务已读取过的语音消息。")
@@ -262,7 +262,7 @@ class ContextStore:
                 transcript_source=source,
                 next_offset=end if end < len(content) else None,
                 remaining_chars=0,
-                remaining_reads=task.reads - 1,
+                remaining_reads=task.reads,
             )
             while (
                 len(result.model_dump_json()) + 10 > min(4000, task.chars)
@@ -275,6 +275,5 @@ class ContextStore:
             ):
                 raise ValueError("剩余预算不足以返回语音转写，请先向用户汇报。")
             task.chars -= len(result.model_dump_json()) + 10
-            task.reads -= 1
             result.remaining_chars = task.chars
             return result

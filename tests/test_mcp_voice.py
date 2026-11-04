@@ -127,7 +127,7 @@ class VoiceContextTests(unittest.TestCase):
             result = self.store.voice(self.request)
         self.assertLessEqual(len(result.model_dump_json()), 4000)
         self.assertIsNotNone(result.next_offset)
-        self.assertEqual(result.remaining_reads, 4)
+        self.assertEqual(result.remaining_reads, 5)
         self.assertEqual(transcribe.call_args.args[3], ("message/message_0.db", 7))
         with patch.object(wechat, "voice") as transcribe:
             with self.assertRaisesRegex(ValueError, "已读取"):
@@ -135,6 +135,15 @@ class VoiceContextTests(unittest.TestCase):
                     DetailRequest(task_id=self.task.task_id, message_id="foreign")
                 )
             transcribe.assert_not_called()
+
+    def test_voice_reads_are_independent_of_text_page_limit(self):
+        task = self.store.tasks[self.task.task_id]
+        task.reads = 0
+        previous_chars = task.chars
+        with patch.object(wechat, "voice", return_value=("直接转写", "local_asr")):
+            result = self.store.voice(self.request)
+        self.assertEqual(result.remaining_reads, 0)
+        self.assertLess(result.remaining_chars, previous_chars)
 
     def test_protocol_returns_bounded_text_and_source(self):
         async def check():
