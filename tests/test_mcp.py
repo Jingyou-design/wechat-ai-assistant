@@ -211,6 +211,20 @@ class DatabaseTests(unittest.TestCase):
             [],
         )
 
+    def test_optional_voice_fields_are_read_when_present(self):
+        with closing(sqlite3.connect(self.root / self.shards[1])) as conn:
+            conn.execute(f"ALTER TABLE {self.table} ADD COLUMN server_id INTEGER")
+            conn.execute(f"ALTER TABLE {self.table} ADD COLUMN source TEXT")
+            conn.execute(
+                f"UPDATE {self.table} SET server_id=42, source='synthetic transcript' WHERE local_id=2"
+            )
+            conn.commit()
+        rows = wechat.query_rows(
+            self.db, "gh_test", (1000, 1001), 1, reference=(self.shards[1], 2)
+        )
+        self.assertEqual(rows[0]["server_id"], 42)
+        self.assertEqual(rows[0]["source"], "synthetic transcript")
+
     def test_sensitive_files_cleaned_on_success_and_error(self):
         for fail in (False, True):
             workdir = self.root / str(fail)
@@ -280,6 +294,8 @@ class ProtocolTests(unittest.TestCase):
                         "start_task",
                         "read_messages",
                         "expand_message",
+                        "read_image",
+                        "transcribe_voice",
                     },
                 )
                 for tool in result.tools:

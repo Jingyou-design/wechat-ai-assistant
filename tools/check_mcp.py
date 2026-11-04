@@ -40,6 +40,8 @@ async def check(url: str | None, wechat: bool):
             "start_task",
             "read_messages",
             "expand_message",
+            "read_image",
+            "transcribe_voice",
         }
         assert all(
             tool.annotations and tool.annotations.read_only_hint for tool in tools.tools

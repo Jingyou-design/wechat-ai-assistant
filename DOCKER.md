@@ -6,6 +6,19 @@
 
 ## 启动
 
+推荐双击项目根目录的 **`start_all.cmd`**，统一启动，无需分别打开读取器和 Docker 终端。
+
+- 前置条件：安装 Python 3.12 和 Docker Desktop，并登录 Windows 微信。
+- 首次自动创建 `.venv` 并安装 `requirements-mcp.txt`；以后依赖文件不变且关键模块可导入时跳过安装。
+- 按需安装本地语音解码器和 SenseVoice 识别模型，首次模型下载约230MB，之后复用。
+- 自动检查并按需启动 Docker Desktop，启动 Windows 读取器，再运行 Docker Compose 构建/启动 MCP 接入层。
+- 已运行的本项目读取器会复用；端口被其他服务占用时明确报错，不停止其他进程。
+- 最后通过真实 MCP 协议检查工具发现和范围保护，不自动读取聊天正文。成功后可关闭启动窗口，读取器和容器留在后台。
+- 读取器后台日志位于 `.venv/mcp-reader.log`。失败时只清理本次新启动的读取器，不停止原本已经运行的服务。
+- 官方隧道和 ChatGPT 首次连接仍按下方说明配置；本入口不保存隧道密钥、不重建隧道，也不代表已验证 ChatGPT 端调用。
+
+如需手动启动：
+
 1. 启动 Docker Desktop，使用 Linux containers；保持 Windows 微信登录。
 2. 在项目目录双击 `start_docker_reader.cmd`，保持该窗口打开。它首次生成 `.env.docker` 随机访问令牌，然后启动鉴权读取器。不要同时运行原来的 `start_mcp.cmd`，两者都使用18765端口。
 3. 在另一个终端进入项目目录，运行：
@@ -15,6 +28,8 @@ docker compose up -d --build
 ```
 
 容器入口：`http://127.0.0.1:18767/mcp`。
+
+需要让 Agent 从源码自行部署时，直接提供 [AGENT_DEPLOY.md](AGENT_DEPLOY.md)。它包含自动部署、验证及用户交接步骤。
 
 ```powershell
 .venv\Scripts\python.exe tools\check_mcp.py --docker

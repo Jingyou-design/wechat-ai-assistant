@@ -62,9 +62,7 @@ class PageResult(BaseModel):
     has_more: bool
     remaining_chars: int
     remaining_reads: int
-    coverage: str = (
-        "仅包含本机缓存、所选会话和时间范围；图片、语音、视频仅返回类型提示。"
-    )
+    coverage: str = "仅包含本机缓存、所选会话和时间范围；图片和语音可按message_id单独读取，视频仅返回类型提示。"
 
 
 class DetailRequest(BaseModel):
@@ -79,3 +77,21 @@ class DetailResult(BaseModel):
     next_offset: int | None
     remaining_chars: int
     remaining_reads: int
+
+
+class ImageRequest(BaseModel):
+    task_id: str = Field(max_length=64)
+    message_id: str = Field(max_length=64)
+
+
+class ImageResult(BaseModel):
+    message_id: str
+    width: int
+    height: int
+    source_variant: str
+    remaining_chars: int
+    remaining_reads: int
+
+
+class VoiceResult(DetailResult):
+    transcript_source: Literal["wechat", "local_asr"]

@@ -9,6 +9,8 @@ import exporter_core as core
 from app.api.schema import (
     DetailRequest,
     DetailResult,
+    ImageRequest,
+    ImageResult,
     Message,
     PageResult,
     ReadRequest,
@@ -17,6 +19,7 @@ from app.api.schema import (
     Session,
     TaskRequest,
     TaskResult,
+    VoiceResult,
 )
 from app.tools import wechat
 
@@ -85,12 +88,12 @@ class ContextStore:
                 remaining_reads=task.reads,
             )
 
-    def _task(self, task_id: str) -> Task:
+    def _task(self, task_id: str, *, text: bool = False) -> Task:
         task = self.tasks.get(task_id)
         if task is None or task.expires <= time.monotonic():
             self.tasks.pop(task_id, None)
             raise ValueError("任务不存在或已过期，请重新开始任务。")
-        if task.reads <= 0 or task.chars <= 0:
+        if (text and task.reads <= 0) or task.chars <= 0:
             raise ValueError(
                 "本任务读取预算已用完，请先向用户汇报，需要追加读取时取得用户同意再开始新任务。"
             )
@@ -98,7 +101,7 @@ class ContextStore:
 
     def read(self, request: ReadRequest) -> PageResult:
         with self.lock:
-            task = self._task(request.task_id)
+            task = self._task(request.task_id, text=True)
             if request.session_id not in task.sessions:
                 raise ValueError("该会话不在本任务范围内。")
             budget = min(5600, task.chars - 400)
@@ -170,7 +173,7 @@ class ContextStore:
 
     def detail(self, request: DetailRequest) -> DetailResult:
         with self.lock:
-            task = self._task(request.task_id)
+            task = self._task(request.task_id, text=True)
             reference = task.references.get(request.message_id)
             if reference is None:
                 raise ValueError("只能展开本任务已读取过的消息。")
@@ -207,6 +210,70 @@ class ContextStore:
                 not result.content and request.offset < len(content)
             ):
                 raise ValueError("剩余预算不足以展开消息，请先向用户汇报。")
+            task.chars -= len(result.model_dump_json()) + 10
+            task.reads -= 1
+            result.remaining_chars = task.chars
+            return result
+
+    def image(self, request: ImageRequest) -> tuple[ImageResult, bytes]:
+        with self.lock:
+            task = self._task(request.task_id)
+            reference = task.references.get(request.message_id)
+            if reference is None:
+                raise ValueError("只能查看本任务已读取过的图片消息。")
+            if task.chars < 400:
+                raise ValueError("剩余预算不足以读取图片，请先向用户汇报。")
+            session_id, rel, local_id = reference
+            data, width, height, variant = wechat.image(
+                task.account, task.sessions[session_id], task.window, (rel, local_id)
+            )
+            result = ImageResult(
+                message_id=request.message_id,
+                width=width,
+                height=height,
+                source_variant=variant,
+                remaining_chars=0,
+                remaining_reads=task.reads,
+            )
+            cost = len(result.model_dump_json()) + 10
+            if cost > task.chars:
+                raise ValueError("剩余预算不足以返回图片信息，请先向用户汇报。")
+            task.chars -= cost
+            result.remaining_chars = task.chars
+            return result, data
+
+    def voice(self, request: DetailRequest) -> VoiceResult:
+        with self.lock:
+            task = self._task(request.task_id, text=True)
+            reference = task.references.get(request.message_id)
+            if reference is None:
+                raise ValueError("只能转写本任务已读取过的语音消息。")
+            session_id, rel, local_id = reference
+            content, source = wechat.voice(
+                task.account, task.sessions[session_id], task.window, (rel, local_id)
+            )
+            chunk = content[
+                request.offset : request.offset + min(3500, max(0, task.chars - 400))
+            ]
+            end = request.offset + len(chunk)
+            result = VoiceResult(
+                message_id=request.message_id,
+                content=chunk,
+                transcript_source=source,
+                next_offset=end if end < len(content) else None,
+                remaining_chars=0,
+                remaining_reads=task.reads - 1,
+            )
+            while (
+                len(result.model_dump_json()) + 10 > min(4000, task.chars)
+                and result.content
+            ):
+                result.content = result.content[: len(result.content) // 2]
+                result.next_offset = request.offset + len(result.content)
+            if len(result.model_dump_json()) + 10 > task.chars or (
+                not result.content and request.offset < len(content)
+            ):
+                raise ValueError("剩余预算不足以返回语音转写，请先向用户汇报。")
             task.chars -= len(result.model_dump_json()) + 10
             task.reads -= 1
             result.remaining_chars = task.chars

@@ -6,6 +6,8 @@
 
 Docker 接入入口的部署说明见 [DOCKER.md](DOCKER.md)；实时读取仍需 Windows 微信。
 
+统一启动：安装 Python 3.12 和 Docker Desktop 后，双击 `start_all.cmd`，自动准备依赖与本地语音识别组件、启动读取器和容器并检查连接。让 AI Agent 自行拉取、部署和验证时，请提供 [AGENT_DEPLOY.md](AGENT_DEPLOY.md)。
+
 把 Windows 微信 4.1.12+ 的聊天记录导出为 TXT、Markdown 和 JSON，方便交给 GPT、Claude、Gemini 等大模型读取，也可以自己留存、检索或继续处理。
 
 如果这个工具对你有帮助，欢迎点个 Star。
