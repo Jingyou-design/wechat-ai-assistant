@@ -1,0 +1,20 @@
+name: Build Docker MCP gateway
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [Dockerfile, .dockerignore, 'docker/**', '.github/workflows/build-docker.yml']
+  pull_request:
+    paths: [Dockerfile, .dockerignore, 'docker/**', '.github/workflows/build-docker.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build gateway without chat data or credentials
+        run: docker build --tag wechat-assistant-mcp:ci .

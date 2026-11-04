@@ -1,0 +1,36 @@
+# 聊天导出结果
+exports/
+final_export/
+
+# 微信解密密钥和缓存
+**/keys.json
+wechatauto_db/
+*.sqlite
+*.sqlite3
+
+# Python 缓存与构建文件
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.spec
+tools/tunnel-client/
+.tunnel-profiles/
+.venv/
+.ruff_cache/
+.env
+.env.*
+wechatauto_logs/
+*.log
+*.db
+*.db-*
+*.pem
+tools/*.exe
+mcp.local.json
+
+# IDE / 系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
