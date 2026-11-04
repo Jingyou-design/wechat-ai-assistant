@@ -1,7 +1,9 @@
 """一键准备依赖、启动 Windows 读取器和 Docker 代理，并检查本机 MCP 通路。"""
 
+import getpass
 import hashlib
 import io
+import json
 import os
 import shutil
 import socket
@@ -10,19 +12,21 @@ import sys
 import time
 import venv
 from pathlib import Path
+from urllib.request import getproxies
 
-from tools.start_docker_reader import prepare_token
+from app.config.bridge import prepare_token
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 LOG = ROOT / ".venv" / "mcp-reader.log"
+TUNNEL = ROOT / "tools" / "tunnel-client" / "tunnel-client.exe"
 
 
 def prepare_environment() -> Path:
     if sys.version_info[:2] != (3, 12):
         raise RuntimeError("请使用 Python 3.12 启动；安装后重新双击 start_all.cmd。")
     if not PYTHON.exists():
-        print("[1/4] 首次创建 Python 虚拟环境…", flush=True)
+        print("[1/5] 首次创建 Python 虚拟环境…", flush=True)
         venv.EnvBuilder(with_pip=True).create(ROOT / ".venv")
     digest = hashlib.sha256(
         (ROOT / "requirements.txt").read_bytes()
@@ -41,7 +45,7 @@ def prepare_environment() -> Path:
         == 0
     )
     if not ready:
-        print("[1/4] 安装或更新读取器依赖，首次需要联网，请稍候…", flush=True)
+        print("[1/5] 安装或更新读取器依赖，首次需要联网，请稍候…", flush=True)
         subprocess.run(
             [str(PYTHON), "-m", "pip", "install", "-r", "requirements-mcp.txt"],
             cwd=ROOT,
@@ -49,7 +53,7 @@ def prepare_environment() -> Path:
         )
         marker.write_text(digest, encoding="ascii")
     else:
-        print("[1/4] 依赖已就绪，跳过安装。", flush=True)
+        print("[1/5] 依赖已就绪，跳过安装。", flush=True)
     return PYTHON
 
 
@@ -67,7 +71,7 @@ def docker_type(docker: str) -> str:
 def prepare_voice():
     import exporter_core as core
 
-    print("[1/4] 检查本地语音识别组件，首次可能下载约230MB模型…", flush=True)
+    print("[1/5] 检查本地语音识别组件，首次可能下载约230MB模型…", flush=True)
     if not core.rust_silk_status()[0]:
         core.install_rust_silk(progress=print)
     if not core.local_asr_status()[0]:
@@ -78,7 +82,7 @@ def prepare_docker() -> str:
     docker = shutil.which("docker")
     if docker is None:
         raise RuntimeError("未找到 Docker，请先安装 Docker Desktop，再重新启动。")
-    print("[2/4] 检查 Docker Desktop…", flush=True)
+    print("[2/5] 检查 Docker Desktop…", flush=True)
     if not docker_type(docker):
         print("正在启动 Docker Desktop…", flush=True)
         subprocess.run(
@@ -125,9 +129,9 @@ def reader_running() -> bool:
 def start_reader() -> subprocess.Popen | None:
     token = prepare_token(ROOT / ".env.docker")
     if reader_running():
-        print("[3/4] Windows 读取器已运行，复用现有进程。", flush=True)
+        print("[3/5] Windows 读取器已运行，复用现有进程。", flush=True)
         return None
-    print("[3/4] 启动 Windows 微信读取器…", flush=True)
+    print("[3/5] 启动 Windows 微信读取器…", flush=True)
     with LOG.open("a", encoding="utf-8") as output:
         return subprocess.Popen(
             [str(PYTHON), str(ROOT / "mcp_server.py"), "--docker-reader"],
@@ -156,7 +160,7 @@ def launch(docker: str):
     process = start_reader()
     try:
         wait_reader(process)
-        print("[4/4] 启动 Docker MCP 接入层并检查连接…", flush=True)
+        print("[4/5] 启动 Docker MCP 接入层并检查连接…", flush=True)
         subprocess.run(
             [
                 docker,
@@ -187,11 +191,94 @@ def launch(docker: str):
             process.terminate()
             process.wait(timeout=10)
         raise
-    print("\n本机服务启动成功，MCP连接检查通过。请保持 Windows 微信登录。", flush=True)
-    print(
-        "服务在后台运行，此窗口可以关闭。官方隧道继续使用原有配置，ChatGPT端连接不包含在本次检查中。",
-        flush=True,
+    print("本机读取器和Docker已就绪，MCP连接检查通过。", flush=True)
+
+
+def tunnel_status() -> dict:
+    result = subprocess.run(
+        [str(TUNNEL), "runtimes", "status", "wechat-assistant", "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=15,
     )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(
+            "无法检查隧道状态，请确认已安装官方tunnel-client。"
+        ) from None
+
+
+def start_tunnel():
+    print("[5/5] 检查官方隧道…", flush=True)
+    if not TUNNEL.exists():
+        raise RuntimeError(
+            "本机服务已启动，但未安装官方隧道客户端。请按CHATGPT_SETUP.md完成首次配置。"
+        )
+    status = tunnel_status()
+    if not status.get("tunnel_id") or not status.get("profile_dir"):
+        raise RuntimeError(
+            "本机服务已启动，但尚未配置隧道。请按CHATGPT_SETUP.md完成首次连接。"
+        )
+    if Path(status["profile_dir"]).resolve() != ROOT / ".tunnel-profiles":
+        raise RuntimeError("同名隧道连接属于其他项目目录，请核对配置，不自动覆盖。")
+    if all(status.get(key) for key in ("process_running", "healthy", "ready")):
+        print("官方隧道已就绪，复用现有后台连接。", flush=True)
+        return
+    key = os.environ.get("CONTROL_PLANE_API_KEY")
+    if not key:
+        if not sys.stdin.isatty():
+            raise RuntimeError(
+                "本机服务已启动，但隧道已停止且缺少运行密钥。请双击start_all.cmd，在窗口中隐藏输入隧道运行密钥；不要把密钥发到聊天。"
+            )
+        key = getpass.getpass("Tunnel runtime key (hidden, not saved): ").strip()
+    if not key:
+        raise RuntimeError("未提供运行密钥，隧道未连接。本机读取器和Docker保持运行。")
+    env = {**os.environ, "CONTROL_PLANE_API_KEY": key}
+    for scheme, proxy in getproxies().items():
+        if scheme in {"http", "https"}:
+            env.setdefault(f"{scheme.upper()}_PROXY", proxy)
+    env["NO_PROXY"] = ",".join(
+        filter(None, [env.get("NO_PROXY"), "127.0.0.1", "localhost"])
+    )
+    result = subprocess.run(
+        [
+            str(TUNNEL),
+            "runtimes",
+            "connect",
+            "--alias",
+            "wechat-assistant",
+            "--tunnel-id",
+            status["tunnel_id"],
+            "--profile-dir",
+            str(ROOT / ".tunnel-profiles"),
+            "--profile",
+            "wechat-docker",
+            "--runtime-api-key",
+            "env:CONTROL_PLANE_API_KEY",
+            "--mcp-server-url",
+            "http://127.0.0.1:18767/mcp",
+            "--json",
+        ],
+        env=env,
+        capture_output=True,
+        check=False,
+        timeout=90,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "本机服务已启动，但隧道重连失败。请检查运行密钥权限和网络代理；不输出可能含敏感信息的完整客户端响应。"
+        )
+    status = tunnel_status()
+    if not all(status.get(key) for key in ("process_running", "healthy", "ready")):
+        raise RuntimeError(
+            "隧道尚未就绪，请检查官方客户端诊断，不能视为ChatGPT已连接。"
+        )
+    print("官方隧道已在后台连接并通过就绪检查。", flush=True)
 
 
 def main() -> int:
@@ -202,6 +289,11 @@ def main() -> int:
         return subprocess.call([str(python), "-m", "tools.start_all"], cwd=ROOT)
     prepare_voice()
     launch(prepare_docker())
+    start_tunnel()
+    print(
+        "读取器、Docker和隧道已就绪，可关闭启动窗口。请保持微信登录，ChatGPT端实际调用仍需验证。",
+        flush=True,
+    )
     return 0
 
 
@@ -210,7 +302,7 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     try:
         sys.exit(main())
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"\n启动失败：{error}", file=sys.stderr, flush=True)
         sys.exit(1)
     except KeyboardInterrupt:

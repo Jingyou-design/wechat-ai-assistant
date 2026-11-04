@@ -165,5 +165,76 @@ class ServiceTests(unittest.TestCase):
             start_all.launch("docker.exe")
 
 
+class TunnelTests(unittest.TestCase):
+    def status(self, ready):
+        return {
+            "tunnel_id": "tunnel_" + "a" * 32,
+            "profile_dir": str(start_all.ROOT / ".tunnel-profiles"),
+            "process_running": ready,
+            "healthy": ready,
+            "ready": ready,
+        }
+
+    def test_healthy_tunnel_is_reused_without_requesting_key(self):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(start_all, "tunnel_status", return_value=self.status(True)),
+            patch.object(start_all.getpass, "getpass") as password,
+            patch.object(start_all.subprocess, "run") as run,
+        ):
+            start_all.start_tunnel()
+        password.assert_not_called()
+        run.assert_not_called()
+
+    def test_missing_key_in_agent_mode_reports_user_action_without_echo(self):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(start_all, "tunnel_status", return_value=self.status(False)),
+            patch.dict(start_all.os.environ, {}, clear=True),
+            patch.object(start_all.sys.stdin, "isatty", return_value=False),
+            patch.object(start_all.getpass, "getpass") as password,
+            self.assertRaisesRegex(RuntimeError, "双击start_all.cmd"),
+        ):
+            start_all.start_tunnel()
+        password.assert_not_called()
+
+    def test_reconnection_uses_environment_key_not_command_arguments(self):
+        key = "synthetic-runtime-key"
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(
+                start_all,
+                "tunnel_status",
+                side_effect=[self.status(False), self.status(True)],
+            ),
+            patch.dict(start_all.os.environ, {"CONTROL_PLANE_API_KEY": key}),
+            patch.object(
+                start_all, "getproxies", return_value={"https": "http://127.0.0.1:7897"}
+            ),
+            patch.object(
+                start_all.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+            ) as run,
+        ):
+            start_all.start_tunnel()
+        self.assertNotIn(key, " ".join(run.call_args.args[0]))
+        self.assertIn("env:CONTROL_PLANE_API_KEY", run.call_args.args[0])
+        self.assertEqual(run.call_args.kwargs["env"]["CONTROL_PLANE_API_KEY"], key)
+        self.assertIn("127.0.0.1", run.call_args.kwargs["env"]["NO_PROXY"])
+
+    def test_failed_reconnection_is_not_reported_ready(self):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(start_all, "tunnel_status", return_value=self.status(False)),
+            patch.dict(
+                start_all.os.environ, {"CONTROL_PLANE_API_KEY": "synthetic-key"}
+            ),
+            patch.object(
+                start_all.subprocess, "run", return_value=SimpleNamespace(returncode=1)
+            ),
+            self.assertRaisesRegex(RuntimeError, "重连失败"),
+        ):
+            start_all.start_tunnel()
+
+
 if __name__ == "__main__":
     unittest.main()

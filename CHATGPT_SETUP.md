@@ -4,15 +4,13 @@
 
 ## 先测本机
 
-使用 Docker 接入层时，可在安装 Python 3.12 和 Docker Desktop 后，双击 `start_all.cmd` 自动准备依赖、启动读取器与代理、检查本机 MCP 连接。重复启动会复用现有读取器。官方隧道仍需按后文配置并保持运行。
+安装 Python 3.12 和 Docker Desktop 后，双击唯一入口 `start_all.cmd` 自动准备依赖、启动读取器与代理、检查本机 MCP 和已配置的官方隧道。重复启动会复用已运行的读取器和健康隧道；隧道停止时尝试重连，缺少密钥时在本机隐藏输入。首次隧道配置按后文完成。
 
 1. 保持 Windows 微信登录。
-2. 在本项目目录双击 `check_mcp.cmd`。它通过真实 MCP 协议查找“工信微报”，读取最近一星期最多 3 条，只输出统计，不输出正文，也不向外部服务上传聊天。
-3. 输出 `readonly_tools: 6`、`scope_guard: passed`、`messages_read: 3` 即通过。公众号会话不存在时会报错，不会改读其他联系人。
+2. 双击 `start_all.cmd`，本机检查只验证 MCP 工具与范围保护，不自动读取聊天正文。
+3. 高级诊断可运行 `.venv\Scripts\python.exe tools\check_mcp.py --docker`，输出 `readonly_tools: 6`、`scope_guard: passed` 即通过。用户授权且本机有“工信微报”时，可加 `--wechat` 读取该公众号最近一星期最多3条，只输出统计；会话不存在时报错，不改读其他联系人。
 
-`start_mcp.cmd` 启动 HTTP 服务，地址 `http://127.0.0.1:18765/mcp`。这是本机地址，不能直接填到 ChatGPT 网页的服务器 URL 中。关闭窗口或按 Ctrl+C 停止。支持本地 stdio 的客户端可使用 `mcp.local.json`；移动项目后需更新其中的绝对路径。
-
-首次运行：先按原项目说明创建虚拟环境，再运行 `.venv\Scripts\python.exe -m pip install -r requirements-mcp.txt`。
+本机 Docker MCP 地址为 `http://127.0.0.1:18767/mcp`，不能直接填成 ChatGPT 可访问的公网地址；通过下方官方隧道接入。
 
 ## 连接个人 ChatGPT
 
@@ -20,12 +18,18 @@
 
 1. 在 [Platform 隧道设置](https://platform.openai.com/settings/organization/tunnels) 创建或复用隧道，确认关联你的目标 ChatGPT 工作区。记录 `tunnel_...`。运行密钥需要 Tunnels Read + Use 权限。
 2. 从 [官方最新版本](https://github.com/openai/tunnel-client/releases/latest) 下载 Windows 版 `tunnel-client`，解压到 `tools/tunnel-client`。本项目测试使用 v0.0.19，下载目录不纳入 Git 仓库。
-3. 在本机 PowerShell 中设置 `CONTROL_PLANE_API_KEY` 环境变量，密钥只供隧道连接使用，请勿发到聊天或提交代码。随后运行 `powershell -NoProfile -File .\connect_chatgpt.ps1 -TunnelId tunnel_你的ID`。脚本只把环境变量引用写入配置，不保存密钥正文。
-4. 脚本诊断通过后会保持运行。查看 `http://127.0.0.1:18766/ui` 的就绪状态。
+3. 首次配置时，在本机 PowerShell 中按下方隐藏输入示例设置 `CONTROL_PLANE_API_KEY`，然后执行：
+
+   ```powershell
+   .\tools\tunnel-client\tunnel-client.exe runtimes connect --alias wechat-assistant --tunnel-id tunnel_你的ID --profile-dir .tunnel-profiles --profile wechat-docker --runtime-api-key env:CONTROL_PLANE_API_KEY --mcp-server-url http://127.0.0.1:18767/mcp --json
+   ```
+
+   命令复用用户自己的隧道并在后台运行，只在配置中记录环境变量引用。Agent 应捕获响应，只汇报 `process_running`、`healthy`、`ready` 等必要状态，不输出完整诊断或凭据。
+4. 再运行 `start_all.cmd`，确认最后的官方隧道检查通过；仅本机 MCP 成功不足以证明 ChatGPT 已连接。
 5. 在 [ChatGPT 插件页](https://chatgpt.com/plugins) → 添加 → 添加自定义 MCP 服务器 → 隧道，选择该隧道。名称填“微信助手”，身份验证选“无需身份验证”（本服务通过受控隧道访问），审核风险提示后创建并安装。
 6. 在你的 Projects 聊天中尝试输入 `@微信助手`。项目内调用仍需实际验证。普通聊天可用不能视为项目内验证完成。
 
-以后重启：在当前终端设置运行密钥，再运行 `tools\tunnel-client\tunnel-client.exe run --profile-dir .tunnel-profiles --profile wechat-assistant`。首次诊断失败但已生成配置时，也用这份配置排查、重启。保持电脑和微信在线。
+以后重启只双击 `start_all.cmd`。已有健康隧道直接复用；若停止且环境中没有运行密钥，窗口会要求隐藏输入一次。保持电脑和微信在线，不再分别运行旧启动脚本。
 
 运行密钥可以在本机终端用隐藏输入设置，避免写进命令历史：
 

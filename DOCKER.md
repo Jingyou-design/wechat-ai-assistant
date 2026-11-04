@@ -13,19 +13,11 @@
 - 按需安装本地语音解码器和 SenseVoice 识别模型，首次模型下载约230MB，之后复用。
 - 自动检查并按需启动 Docker Desktop，启动 Windows 读取器，再运行 Docker Compose 构建/启动 MCP 接入层。
 - 已运行的本项目读取器会复用；端口被其他服务占用时明确报错，不停止其他进程。
-- 最后通过真实 MCP 协议检查工具发现和范围保护，不自动读取聊天正文。成功后可关闭启动窗口，读取器和容器留在后台。
+- 通过真实 MCP 协议检查工具发现和范围保护，再检查已配置的官方隧道；停止时尝试后台重连，缺少运行密钥时在本机隐藏输入。全部就绪后可关闭启动窗口。
 - 读取器后台日志位于 `.venv/mcp-reader.log`。失败时只清理本次新启动的读取器，不停止原本已经运行的服务。
-- 官方隧道和 ChatGPT 首次连接仍按下方说明配置；本入口不保存隧道密钥、不重建隧道，也不代表已验证 ChatGPT 端调用。
+- 官方隧道和 ChatGPT 首次连接仍按下方说明配置；本入口复用已有隧道，不保存运行密钥正文，也不代表已验证 ChatGPT 端调用。非交互的Agent缺少密钥时会收到明确错误，本机服务保持运行，最后请用户双击唯一入口输入密钥。
 
-如需手动启动：
-
-1. 启动 Docker Desktop，使用 Linux containers；保持 Windows 微信登录。
-2. 在项目目录双击 `start_docker_reader.cmd`，保持该窗口打开。它首次生成 `.env.docker` 随机访问令牌，然后启动鉴权读取器。不要同时运行原来的 `start_mcp.cmd`，两者都使用18765端口。
-3. 在另一个终端进入项目目录，运行：
-
-```powershell
-docker compose up -d --build
-```
+Agent 或终端中使用同一入口：`.venv\Scripts\python.exe -m tools.start_all`。项目根目录只保留 `start_all.cmd` 一个双击启动文件。
 
 容器入口：`http://127.0.0.1:18767/mcp`。
 
@@ -38,7 +30,7 @@ docker compose up -d --build
 
 第一条验证 MCP 工具发现和无效任务拒绝；第二条额外读取“工信微报”最近一星期最多3条，只输出统计，不上传到外部服务。
 
-停止容器：`docker compose down`。在读取器窗口按 Ctrl+C 停止 Windows 进程。
+停止容器：`docker compose down`。读取器为后台进程，停止前必须核对命令和工作目录确属本项目的 `mcp_server.py --docker-reader`，不能按进程名批量结束 Python。
 
 ## 连接与边界
 

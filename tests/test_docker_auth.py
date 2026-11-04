@@ -6,7 +6,7 @@ from pathlib import Path
 from starlette.responses import Response
 
 from app.api.mcp import BridgeAuth, bridge_app
-from tools.start_docker_reader import prepare_token
+from app.config.bridge import prepare_token
 
 
 class DockerAuthTests(unittest.TestCase):

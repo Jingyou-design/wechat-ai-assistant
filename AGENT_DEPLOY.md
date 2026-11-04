@@ -56,6 +56,7 @@ py -3.12 -m tools.start_all
 3. 检查并按需启动 Docker Desktop；确认使用 Linux containers。
 4. 创建或复用本机 `.env.docker` 访问令牌，启动 Windows 读取器；已有本项目读取器时复用，其他服务占用端口时不擅自结束它。
 5. 构建、启动 Docker MCP 代理，等待容器健康，并通过真实 MCP 协议检查工具发现与无效任务拒绝。
+6. 检查已配置的官方隧道，健康时复用，停止时用环境中的运行密钥后台重连。非交互环境缺少密钥会明确报错，本机服务保持运行；最后请用户双击唯一入口，在本机隐藏输入密钥。不能因本机检查通过而忽略隧道错误。
 
 首次下载或构建可能耗时较长，按输出继续等待，不能仅因超过一次工具等待时间就判断失败。不要同时启动第二次安装或重复下载。
 
@@ -94,9 +95,9 @@ docker compose ps
 
 尚未安装客户端时，可下载适用的官方 Windows 发行版并校验官方提供的校验值，放入项目 `tools/tunnel-client`，再检查 `--help`。下载目录和 `.tunnel-profiles` 已排除出 Git。
 
-隧道应关联目标用户的 Platform 组织和目标 ChatGPT 工作区，运行账号需要 Tunnels Read + Use 权限。**目标 MCP URL 使用 `http://127.0.0.1:18767/mcp`。** 现有 `connect_chatgpt.ps1` 默认面向旧的 stdio 路径；不要直接照抄它，把它当作 Docker 接入层配置完成。
+隧道应关联目标用户的 Platform 组织和目标 ChatGPT 工作区，运行账号需要 Tunnels Read + Use 权限。**目标 MCP URL 使用 `http://127.0.0.1:18767/mcp`。** 首次设置使用当前官方CLI的 `runtimes connect`，本项目统一别名为 `wechat-assistant`，配置名称为 `wechat-docker`，配置目录为本项目的 `.tunnel-profiles`；具体命令见 `CHATGPT_SETUP.md`。
 
-使用当前 `tunnel-client` 帮助和官方流程配置、诊断并启动，运行密钥使用环境变量引用。让用户在本机隐藏输入或受支持的安全界面输入，不要求把密钥发到聊天；不要把实际密钥作为 CLI 参数。不要更改系统 PowerShell 执行策略来启动脚本。
+使用当前 `tunnel-client` 帮助和官方流程配置、诊断并启动，运行密钥使用环境变量引用。让用户在本机隐藏输入或受支持的安全界面输入，不要求把密钥发到聊天；不要把实际密钥作为 CLI 参数。不要更改系统 PowerShell 执行策略。日常启动只调用 `start_all.cmd` 或 `python -m tools.start_all`，不再创建额外的读取器、隧道、检查启动文件。
 
 若缺少账号权限、隧道ID或密钥，完成本机部署和诊断后，在最终说明中列出用户需在 Platform 隧道设置完成的具体字段和步骤。用户补齐后继续同一部署，不重新拉取、安装或创建重复隧道。
 

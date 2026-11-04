@@ -2,11 +2,11 @@
 
 基于 [zhuzhangxue/wechat-chat-export](https://github.com/zhuzhangxue/wechat-chat-export) 二次开发，保留原项目许可证和来源说明。新增只读 MCP 工具、按需读取预算与 Docker 接入入口，供 AI 分析指定会话并生成待审核的回复和文件。
 
-新增只读微信 MCP 工具：本机双击 `check_mcp.cmd` 自检，ChatGPT 连接与范围限制见 [CHATGPT_SETUP.md](CHATGPT_SETUP.md)。
+只读微信 MCP 的统一启动入口为 `start_all.cmd`，ChatGPT 首次连接与范围限制见 [CHATGPT_SETUP.md](CHATGPT_SETUP.md)。
 
 Docker 接入入口的部署说明见 [DOCKER.md](DOCKER.md)；实时读取仍需 Windows 微信。
 
-统一启动：安装 Python 3.12 和 Docker Desktop 后，双击 `start_all.cmd`，自动准备依赖与本地语音识别组件、启动读取器和容器并检查连接。让 AI Agent 自行拉取、部署和验证时，请提供 [AGENT_DEPLOY.md](AGENT_DEPLOY.md)。
+统一启动：安装 Python 3.12 和 Docker Desktop 后，双击 `start_all.cmd`，自动准备依赖与本地语音识别组件、启动读取器和容器，并检查、恢复已配置的官方隧道；缺少运行密钥时在本机隐藏输入，不保存密钥正文。让 AI Agent 自行拉取、部署和验证时，请提供 [AGENT_DEPLOY.md](AGENT_DEPLOY.md)。
 
 把 Windows 微信 4.1.12+ 的聊天记录导出为 TXT、Markdown 和 JSON，方便交给 GPT、Claude、Gemini 等大模型读取，也可以自己留存、检索或继续处理。
 

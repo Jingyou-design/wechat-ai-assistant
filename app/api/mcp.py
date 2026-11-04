@@ -56,7 +56,7 @@ class BridgeAuth:
 def bridge_app(token: str):
     if not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", token):
         raise ValueError(
-            "Docker 读取模式需要43至128位随机URL安全令牌，请运行start_docker_reader.cmd生成配置。"
+            "Docker 读取模式需要43至128位随机URL安全令牌，请运行start_all.cmd生成配置。"
         )
     application = server.streamable_http_app()
     application.add_middleware(BridgeAuth, token=token)
